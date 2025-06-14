@@ -1,18 +1,39 @@
-import { NextResponse } from "next/server"
-import { NSEScraperService } from "@/lib/nse-scraper-service"
+import { NextResponse } from "next/server";
+import { NSEScraperService } from "@/lib/nse-scraper-service";
 
-export async function GET() {
+interface StockResponse {
+  success: boolean;
+  data: any[];
+  count: number;
+  error?: string;
+  details?: string;
+}
+
+export async function GET(request: Request) {
   try {
-    const scraperService = new NSEScraperService()
-    const latestPrices = await scraperService.getLatestPrices()
+    // Example: Handling query parameters
+    const { searchParams } = new URL(request.url);
+    const stockSymbol = searchParams.get("symbol");
 
-    return NextResponse.json({
+    if (!stockSymbol) {
+      return NextResponse.json(
+        { success: false, error: "Stock symbol is required" },
+        { status: 400 }, // Bad Request
+      );
+    }
+
+    const scraperService = new NSEScraperService();
+    const latestPrices = await scraperService.getLatestPrices();
+
+    const response: StockResponse = {
       success: true,
       data: latestPrices,
       count: latestPrices.length,
-    })
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
-    console.error("Error fetching stocks:", error)
+    console.error(`[${new Date().toISOString()}] Error fetching stocks:`, error);
     return NextResponse.json(
       {
         success: false,
@@ -21,7 +42,7 @@ export async function GET() {
         count: 0,
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 200 }, // Return 200 to avoid breaking the client
-    )
+      { status: 500 }, // Return 500 for server error
+    );
   }
 }
