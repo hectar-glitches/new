@@ -1,7 +1,6 @@
 "use client"
 
-import type React from "react"
-import { createContext, useContext, useEffect, useState, useRef } from "react"
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from "react"
 
 interface WebSocketMessage {
   type: string
@@ -24,34 +23,56 @@ export function useWebSocket() {
   return useContext(WebSocketContext)
 }
 
-export function WebSocketProvider({ children }: { children: React.ReactNode }) {
+interface WebSocketProviderProps {
+  children: React.ReactNode
+  url: string
+}
+
+export function WebSocketProvider({ children, url }: WebSocketProviderProps) {
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected")
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
 
-  // Real WebSocket connection (no simulated data)
   useEffect(() => {
-    console.log("🌐 WebSocket Provider initialized - real connections only")
-    setConnectionStatus("disconnected")
+    setConnectionStatus("connecting")
+    const ws = new WebSocket(url)
+    wsRef.current = ws
 
-    // In a real implementation, you would connect to an actual WebSocket server
-    // For now, we'll just set the status to disconnected since we're using REST APIs
+    ws.onopen = () => setConnectionStatus("connected")
+    ws.onclose = () => setConnectionStatus("disconnected")
+    ws.onerror = () => setConnectionStatus("disconnected")
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        setLastMessage(data)
+      } catch (e) {
+        // handle non-JSON message
+      }
+    }
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-      }
+      ws.close()
+      wsRef.current = null
       setConnectionStatus("disconnected")
+    }
+  }, [url])
+
+  const sendMessage = useCallback((message: any) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(message))
+    } else {
+      console.warn("WebSocket not connected, message not sent:", message)
     }
   }, [])
 
-  const sendMessage = (message: any) => {
-    // In a real implementation, this would send data through the WebSocket
-    console.log("📡 WebSocket message would be sent:", message)
-  }
+  const contextValue = useMemo(() => ({
+    lastMessage,
+    sendMessage,
+    connectionStatus,
+  }), [lastMessage, sendMessage, connectionStatus])
 
   return (
-    <WebSocketContext.Provider value={{ lastMessage, sendMessage, connectionStatus }}>
+    <WebSocketContext.Provider value={contextValue}>
       {children}
     </WebSocketContext.Provider>
   )
